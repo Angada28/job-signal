@@ -73,8 +73,38 @@ Resources:
             Description: Trigger the Job Signal pipeline once per day
             Input: "{}"
 
+  QueryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: job-signal-query
+      CodeUri: src/query/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref JobSignalTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref JobSignalTable
+      Events:
+        GetJobs:
+          Type: HttpApi
+          Properties:
+            Path: /jobs
+            Method: get
+        GetTrends:
+          Type: HttpApi
+          Properties:
+            Path: /trends
+            Method: get
+
 Outputs:
   TableName:
     Value: !Ref JobSignalTable
   StateMachineArn:
     Value: !Ref JobSignalStateMachine
+  ApiUrl:
+    Description: Base URL for the Job Signal query API
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
