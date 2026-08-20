@@ -17,6 +17,12 @@ Step Functions ---> Lambda: ingest ---> DynamoDB ---> Lambda: query ---> API Gat
                             +---> Lambda: summarize (trending skills) ---> HTTP clients
 ```
 
+![Step Functions execution graph showing IngestJobs and SummarizeSkills both succeeded, with the unused Catch branch to IngestFailed visible](assets/stepfunctions-execution.png)
+
+_A real execution: both steps succeeded (green), and the `Catch #1` branch to
+`IngestFailed` — never triggered here — shows the error-handling path exists
+without needing a failure to prove it._
+
 - **EventBridge** triggers the pipeline once a day (`rate(1 day)`).
 - **Step Functions** orchestrates two Lambda steps in sequence — `ingest` then
   `summarize` — with automatic retries on transient failure and a `Catch` branch
@@ -24,11 +30,12 @@ Step Functions ---> Lambda: ingest ---> DynamoDB ---> Lambda: query ---> API Gat
 - **Ingest Lambda** pulls remote software-dev postings from the
   [Remotive API](https://remotive.com/api-documentation), normalizes and
   deduplicates them, and writes them to DynamoDB.
-- **Summarize Lambda** scans the table for skill-tagged postings and writes a daily
-  "trending skills" snapshot.
+- **Summarize Lambda** reads atomic per-skill counters (updated incrementally by
+  ingest on every new posting) via a single `Query`, and writes a daily
+  "trending skills" snapshot — no table scan involved.
 - **Query Lambda + API Gateway (HTTP API)** exposes two read-only endpoints over
   plain HTTP.
-- **DynamoDB** uses a single-table design with three item shapes sharing one table
+- **DynamoDB** uses a single-table design with four item shapes sharing one table
   (see below).
 - **IAM**: every Lambda has its own execution role scoped to only what it needs —
   ingest/summarize get read+write on the table, query gets read-only, and the
@@ -38,11 +45,12 @@ Step Functions ---> Lambda: ingest ---> DynamoDB ---> Lambda: query ---> API Gat
 
 Single table (`JobSignal`), partition key `PK`, sort key `SK`:
 
-| Item type            | PK              | SK                            | Purpose                                                                                       |
-| -------------------- | --------------- | ----------------------------- | --------------------------------------------------------------------------------------------- |
-| Canonical job record | `JOB#<job_id>`  | `META`                        | Source of truth per posting, used for dedup                                                   |
-| Skill index record   | `SKILL#<skill>` | `<publication_date>#<job_id>` | Fast lookup: "all postings tagged `python`"                                                   |
-| Daily summary        | `SUMMARY`       | `<date>`                      | Time-series pattern: one partition, sortable by date, so "latest summary" is a single `Query` |
+| Item type            | PK              | SK                            | Purpose                                                                                                    |
+| -------------------- | --------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Canonical job record | `JOB#<job_id>`  | `META`                        | Source of truth per posting, used for dedup                                                                |
+| Skill index record   | `SKILL#<skill>` | `<publication_date>#<job_id>` | Fast lookup: "all postings tagged `python`"                                                                |
+| Per-skill counter    | `COUNTER`       | `<skill>`                     | Atomically incremented on each new posting (`UpdateItem` + `ADD`); read in one `Query` instead of scanning |
+| Daily summary        | `SUMMARY`       | `<date>`                      | Time-series pattern: one partition, sortable by date, so "latest summary" is a single `Query`              |
 
 Each posting fans out into multiple items on write (one canonical record + one
 record per tag) so every read pattern is a direct key lookup — no scans on the
@@ -107,8 +115,8 @@ template.yaml              # SAM/CloudFormation infrastructure definition
 statemachine/
   pipeline.asl.json        # Step Functions state machine (Amazon States Language)
 src/
-  ingest/app.py            # Fetch + normalize + write to DynamoDB
-  summarize/app.py         # Scan + aggregate trending skills
+  ingest/app.py            # Fetch + normalize + write to DynamoDB, increment skill counters
+  summarize/app.py         # Query counters + write trending-skills snapshot
   query/app.py             # API Gateway-backed read endpoints
 ```
 
@@ -116,7 +124,6 @@ src/
 
 - A second data source (e.g. Adzuna) to test the normalization layer against a
   differently-shaped API
-- Replace the summarize Lambda's full-table `Scan` with a maintained counter
-  item updated incrementally on each ingest write, for better scale
 - SNS/SES email alert when a posting matches a saved skill profile
 - Infrastructure split into nested stacks as the template grows
+- Basic unit tests around tag normalization and item-building logic
