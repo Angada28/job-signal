@@ -70,6 +70,18 @@ def build_items(job):
     return canonical, skill_items
 
 
+def increment_skill_counters(tags):
+    """Atomically bump each skill's running total. Called only for genuinely
+    new jobs, since a job's tags are already reflected in the counters once
+    it's been ingested — incrementing again on a later run would double-count."""
+    for tag in tags:
+        table.update_item(
+            Key={"PK": "COUNTER", "SK": tag},
+            UpdateExpression="ADD article_count :inc",
+            ExpressionAttributeValues={":inc": 1},
+        )
+
+
 def lambda_handler(event, context):
     jobs = fetch_jobs()
     logger.info("Fetched %d jobs from Remotive", len(jobs))
@@ -84,15 +96,19 @@ def lambda_handler(event, context):
             existing = table.get_item(Key={"PK": f"JOB#{job_id}", "SK": "META"}).get(
                 "Item"
             )
-            if existing:
-                seen_count += 1
-            else:
+            is_new = existing is None
+            if is_new:
                 new_count += 1
+            else:
+                seen_count += 1
 
             canonical, skill_items = build_items(job)
             batch.put_item(Item=canonical)
             for item in skill_items:
                 batch.put_item(Item=item)
+
+            if is_new:
+                increment_skill_counters(canonical["tags"])
 
     result = {
         "jobs_fetched": len(jobs),
