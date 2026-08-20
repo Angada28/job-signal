@@ -64,6 +64,14 @@ Resources:
             FunctionName: !Ref IngestFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref SummarizeFunction
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+            Name: job-signal-daily-trigger
+            Description: Trigger the Job Signal pipeline once per day
+            Input: "{}"
 
 Outputs:
   TableName:
