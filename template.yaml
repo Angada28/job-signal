@@ -35,6 +35,38 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref JobSignalTable
 
+  SummarizeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: job-signal-summarize
+      CodeUri: src/summarize/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref JobSignalTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref JobSignalTable
+
+  JobSignalStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: job-signal-pipeline
+      DefinitionUri: statemachine/pipeline.asl.json
+      DefinitionSubstitutions:
+        IngestFunctionArn: !GetAtt IngestFunction.Arn
+        SummarizeFunctionArn: !GetAtt SummarizeFunction.Arn
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref IngestFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref SummarizeFunction
+
 Outputs:
   TableName:
     Value: !Ref JobSignalTable
+  StateMachineArn:
+    Value: !Ref JobSignalStateMachine

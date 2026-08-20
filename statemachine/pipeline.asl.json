@@ -1,0 +1,44 @@
+{
+  "Comment": "Job Signal pipeline: ingest Remotive postings, then summarize trending skills",
+  "StartAt": "IngestJobs",
+  "States": {
+    "IngestJobs": {
+      "Type": "Task",
+      "Resource": "${IngestFunctionArn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "IngestFailed"
+        }
+      ],
+      "Next": "SummarizeSkills"
+    },
+    "SummarizeSkills": {
+      "Type": "Task",
+      "Resource": "${SummarizeFunctionArn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "End": true
+    },
+    "IngestFailed": {
+      "Type": "Fail",
+      "Error": "IngestJobsFailed",
+      "Cause": "The ingest step failed after retries; summarize was not run."
+    }
+  }
+}
