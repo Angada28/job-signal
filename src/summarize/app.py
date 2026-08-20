@@ -1,10 +1,9 @@
 import os
 import logging
-from collections import Counter
 from datetime import datetime, timezone
 
 import boto3
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Key
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -15,34 +14,38 @@ dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(TABLE_NAME)
 
 
-def scan_skill_items():
-    """Scan for every SKILL# item, paginating past DynamoDB's 1MB-per-page limit."""
-    items = []
-    scan_kwargs = {"FilterExpression": Attr("PK").begins_with("SKILL#")}
+def get_skill_counters():
+    """A single Query against the COUNTER partition -- bounded by the number
+    of distinct skills, not the number of postings. No table scan required."""
+    counters = []
+    query_kwargs = {"KeyConditionExpression": Key("PK").eq("COUNTER")}
     while True:
-        response = table.scan(**scan_kwargs)
-        items.extend(response.get("Items", []))
+        response = table.query(**query_kwargs)
+        counters.extend(response.get("Items", []))
         if "LastEvaluatedKey" not in response:
             break
-        scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
-    return items
+        query_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+    return counters
 
 
 def lambda_handler(event, context):
-    items = scan_skill_items()
-    logger.info("Scanned %d skill-tagged postings", len(items))
+    counters = get_skill_counters()
+    logger.info("Read %d skill counters", len(counters))
 
-    skill_counts = Counter(item["PK"].removeprefix("SKILL#") for item in items)
-    top_skills = skill_counts.most_common(15)
+    ranked = sorted(counters, key=lambda c: int(c["article_count"]), reverse=True)
+    top_skills = [
+        {"skill": c["SK"], "count": int(c["article_count"])} for c in ranked[:15]
+    ]
+    total_tagged_postings = sum(int(c["article_count"]) for c in counters)
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     table.put_item(
         Item={
-            "PK": f"SUMMARY",
+            "PK": "SUMMARY",
             "SK": today,
             "date": today,
-            "total_tagged_postings": len(items),
-            "top_skills": [{"skill": s, "count": c} for s, c in top_skills],
+            "total_tagged_postings": total_tagged_postings,
+            "top_skills": top_skills,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
     )
