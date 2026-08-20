@@ -1,0 +1,40 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Job Signal - serverless job ingestion and query pipeline
+
+Resources:
+  JobSignalTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: JobSignal
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+
+  IngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: job-signal-ingest
+      CodeUri: src/ingest/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref JobSignalTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref JobSignalTable
+
+Outputs:
+  TableName:
+    Value: !Ref JobSignalTable
