@@ -38,8 +38,8 @@ def lambda_handler(event, context):
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     table.put_item(
         Item={
-            "PK": f"SUMMARY#{today}",
-            "SK": "META",
+            "PK": f"SUMMARY",
+            "SK": today,
             "date": today,
             "total_tagged_postings": len(items),
             "top_skills": [{"skill": s, "count": c} for s, c in top_skills],
