@@ -62,7 +62,28 @@ hand-writing IAM JSON.
   until you actually build the second access pattern — a real argument for
   designing around access patterns up front, not after the fact.
 
-## What I'd do differently with more time
+## An optimization that looked broken but wasn't
+
+After the initial build worked end to end, I replaced the summarize Lambda's
+full-table `Scan` (recomputing skill counts from every tagged posting, every
+run) with atomic per-skill counters updated incrementally by the ingest Lambda
+via `UpdateItem` with an `ADD` expression — `Query`-able in one call, bounded by
+the number of distinct skills rather than the number of postings.
+
+The counters had to increment only for genuinely _new_ jobs, not ones already
+seen on a prior run, or a job would get double-counted every time the pipeline
+re-ingested it. After wiring that up and deploying, I ran the pipeline and
+`/trends` came back completely empty — zero counters, zero total.
+
+My first instinct was that something was broken. Instead of guessing, I pulled
+the actual Step Functions execution history and checked what the ingest step
+had reported: `"new_jobs": 0, "already_seen": 17`. Remotive had simply
+returned the same postings as the previous run, so correctly, nothing new was
+counted. The empty result wasn't a bug — it was proof the dedup guard was
+working exactly as designed. It would have been easy to assume failure and
+start changing code that didn't need changing; checking the actual execution
+data first instead of my assumption was the right call, and it's the same
+instinct I'd want to bring to debugging a production system.
 
 - The summarize Lambda re-scans the whole table on every run. Fine at this
   scale; at real scale I'd maintain a running counter per skill, updated
