@@ -1,7 +1,7 @@
 # Job Signal
 
 A serverless pipeline that ingests remote job postings on a schedule, tags them by
-skill, and serves the results through a small HTTP API — built to learn AWS
+skill, and serves the results through a small HTTP API. Built to learn AWS
 serverless architecture (Lambda, API Gateway, Step Functions, DynamoDB, EventBridge,
 IAM) through a real, non-trivial project rather than isolated tutorials.
 
@@ -20,24 +20,24 @@ Step Functions ---> Lambda: ingest ---> DynamoDB ---> Lambda: query ---> API Gat
 ![Step Functions execution graph showing IngestJobs and SummarizeSkills both succeeded, with the unused Catch branch to IngestFailed visible](assets/stepfunctions-execution.png)
 
 _A real execution: both steps succeeded (green), and the `Catch #1` branch to
-`IngestFailed` — never triggered here — shows the error-handling path exists
+`IngestFailed` (never triggered here) shows the error-handling path exists
 without needing a failure to prove it._
 
 - **EventBridge** triggers the pipeline once a day (`rate(1 day)`).
-- **Step Functions** orchestrates two Lambda steps in sequence — `ingest` then
-  `summarize` — with automatic retries on transient failure and a `Catch` branch
+- **Step Functions** orchestrates two Lambda steps in sequence: `ingest`, then
+  `summarize`, with automatic retries on transient failure and a `Catch` branch
   that stops the pipeline cleanly if ingest fails, rather than summarizing stale data.
 - **Ingest Lambda** pulls remote software-dev postings from the
   [Remotive API](https://remotive.com/api-documentation), normalizes and
   deduplicates them, and writes them to DynamoDB.
 - **Summarize Lambda** reads atomic per-skill counters (updated incrementally by
   ingest on every new posting) via a single `Query`, and writes a daily
-  "trending skills" snapshot — no table scan involved.
+  "trending skills" snapshot, with no table scan involved.
 - **Query Lambda + API Gateway (HTTP API)** exposes two read-only endpoints over
   plain HTTP.
 - **DynamoDB** uses a single-table design with four item shapes sharing one table
   (see below).
-- **IAM**: every Lambda has its own execution role scoped to only what it needs —
+- **IAM**: every Lambda has its own execution role scoped to only what it needs:
   ingest/summarize get read+write on the table, query gets read-only, and the
   state machine can only invoke these two specific functions.
 
@@ -52,8 +52,8 @@ Single table (`JobSignal`), partition key `PK`, sort key `SK`:
 | Per-skill counter    | `COUNTER`       | `<skill>`                     | Atomically incremented on each new posting (`UpdateItem` + `ADD`); read in one `Query` instead of scanning |
 | Daily summary        | `SUMMARY`       | `<date>`                      | Time-series pattern: one partition, sortable by date, so "latest summary" is a single `Query`              |
 
-Each posting fans out into multiple items on write (one canonical record + one
-record per tag) so every read pattern is a direct key lookup — no scans on the
+Each posting fans out into multiple items on write (one canonical record plus one
+record per tag), so every read pattern is a direct key lookup, with no scans on the
 request path.
 
 ## API
@@ -106,7 +106,7 @@ aws stepfunctions start-execution \
 This project uses the [Remotive](https://remotive.com) public API, which is free
 and requires no API key. Per Remotive's API terms, this project polls at most
 once a day and links back to the original posting URL rather than
-redistributing content — see the source-attribution note in `src/ingest/app.py`.
+redistributing content; see the source-attribution note in `src/ingest/app.py`.
 
 ## Project structure
 
