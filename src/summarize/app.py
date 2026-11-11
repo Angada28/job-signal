@@ -36,7 +36,9 @@ def lambda_handler(event, context):
     top_skills = [
         {"skill": c["SK"], "count": int(c["article_count"])} for c in ranked[:15]
     ]
-    total_tagged_postings = sum(int(c["article_count"]) for c in counters)
+    # Sum of all skill counters: a job tagged with 10 skills contributes 10,
+    # so this counts skill tags, not distinct postings.
+    total_skill_tags = sum(int(c["article_count"]) for c in counters)
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     table.put_item(
@@ -44,7 +46,7 @@ def lambda_handler(event, context):
             "PK": "SUMMARY",
             "SK": today,
             "date": today,
-            "total_tagged_postings": total_tagged_postings,
+            "total_skill_tags": total_skill_tags,
             "top_skills": top_skills,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }

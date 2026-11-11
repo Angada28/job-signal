@@ -32,8 +32,16 @@ Resources:
         Variables:
           TABLE_NAME: !Ref JobSignalTable
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref JobSignalTable
+        # Least privilege: only the actions ingest actually calls
+        # (get_item for dedup, batch_writer puts, update_item for counters).
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:BatchWriteItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt JobSignalTable.Arn
 
   SummarizeFunction:
     Type: AWS::Serverless::Function
@@ -48,8 +56,13 @@ Resources:
         Variables:
           TABLE_NAME: !Ref JobSignalTable
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref JobSignalTable
+        # Least privilege: query the COUNTER partition, write the SUMMARY item.
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:PutItem
+              Resource: !GetAtt JobSignalTable.Arn
 
   JobSignalStateMachine:
     Type: AWS::Serverless::StateMachine

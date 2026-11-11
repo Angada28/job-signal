@@ -29,12 +29,14 @@ and a `Catch` branch — if ingest fails, summarize doesn't run against stale
 data, and the failure is visible in the execution history instead of silently
 propagating. Explicit state machine over implicit function chaining.
 
-**Least-privilege IAM per function.** Each Lambda has its own execution role:
-ingest and summarize get read+write on the DynamoDB table, query gets read-only,
-and the state machine's role can only invoke those two specific functions —
-nothing broader. I set this up with SAM's policy templates
-(`DynamoDBCrudPolicy`, `DynamoDBReadPolicy`, `LambdaInvokePolicy`) rather than
-hand-writing IAM JSON.
+**Least-privilege IAM per function.** Each Lambda has its own execution role,
+granting only the DynamoDB actions that function actually calls: ingest gets
+`GetItem`, `PutItem`, `BatchWriteItem` and `UpdateItem`; summarize gets `Query`
+and `PutItem`; query gets read-only access (`DynamoDBReadPolicy`); and the state
+machine's role can only invoke those two specific functions (`LambdaInvokePolicy`).
+I originally used SAM's `DynamoDBCrudPolicy` for ingest and summarize, then
+audited it and replaced it with inline policies, because that template also
+grants actions like `DeleteItem` and `Scan` that neither function needs.
 
 ## Problems I actually hit (and what they taught me)
 

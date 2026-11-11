@@ -74,7 +74,7 @@ def handle_trends(_query_params):
         200,
         {
             "date": latest["SK"],
-            "total_tagged_postings": latest.get("total_tagged_postings", 0),
+            "total_skill_tags": latest.get("total_skill_tags", 0),
             "top_skills": latest.get("top_skills", []),
         },
     )

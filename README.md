@@ -77,7 +77,7 @@ Returns the most recent daily summary of tagged-skill counts.
 ```
 GET /trends
 
-{"date": "2026-08-20", "total_tagged_postings": 177, "top_skills": [
+{"date": "2026-08-20", "total_skill_tags": 177, "top_skills": [
   {"skill": "ai/ml", "count": 5}, ...
 ]}
 ```
