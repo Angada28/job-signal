@@ -31,12 +31,14 @@ propagating. Explicit state machine over implicit function chaining.
 
 **Least-privilege IAM per function.** Each Lambda has its own execution role,
 granting only the DynamoDB actions that function actually calls: ingest gets
-`GetItem`, `PutItem`, `BatchWriteItem` and `UpdateItem`; summarize gets `Query`
-and `PutItem`; query gets read-only access (`DynamoDBReadPolicy`); and the state
-machine's role can only invoke those two specific functions (`LambdaInvokePolicy`).
-I originally used SAM's `DynamoDBCrudPolicy` for ingest and summarize, then
-audited it and replaced it with inline policies, because that template also
-grants actions like `DeleteItem` and `Scan` that neither function needs.
+`GetItem`, `BatchWriteItem` and `UpdateItem`; summarize gets `Query` and
+`PutItem`; query gets only `Query`; and the state machine's role can only invoke
+those two specific functions (`LambdaInvokePolicy`). I originally used SAM's
+`DynamoDBCrudPolicy` and `DynamoDBReadPolicy` templates, then audited them
+against the code and replaced them with inline policies, because they grant
+actions like `DeleteItem` and `Scan` that these functions never call. The audit
+caught a subtle one too: ingest's `batch.put_item(...)` looks like `PutItem`, but
+boto3's `batch_writer` actually sends `BatchWriteItem`, so `PutItem` wasn't needed.
 
 ## Problems I actually hit (and what they taught me)
 
@@ -87,9 +89,9 @@ start changing code that didn't need changing; checking the actual execution
 data first instead of my assumption was the right call, and it's the same
 instinct I'd want to bring to debugging a production system.
 
-- The summarize Lambda re-scans the whole table on every run. Fine at this
-  scale; at real scale I'd maintain a running counter per skill, updated
-  incrementally by the ingest Lambda instead of recomputed from scratch.
+- Skill counts are all-time totals, and each daily snapshot is a top-15 of those
+  totals. Real trend detection would compare snapshots day over day (or keep
+  per-day counters) to show which skills are rising or falling.
 - Only one data source right now (Remotive). A second source with a differently
   shaped API would be a good test of whether the normalization layer actually
   generalizes or was accidentally tailored to Remotive's response format.

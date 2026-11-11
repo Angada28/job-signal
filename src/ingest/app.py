@@ -88,32 +88,38 @@ def lambda_handler(event, context):
 
     new_count = 0
     seen_count = 0
+    failed_count = 0
 
     with table.batch_writer(overwrite_by_pkeys=["PK", "SK"]) as batch:
         for job in jobs:
-            job_id = str(job["id"])
+            job_id = str(job.get("id", "<missing id>"))
+            try:
+                existing = table.get_item(
+                    Key={"PK": f"JOB#{job_id}", "SK": "META"}
+                ).get("Item")
+                is_new = existing is None
 
-            existing = table.get_item(Key={"PK": f"JOB#{job_id}", "SK": "META"}).get(
-                "Item"
-            )
-            is_new = existing is None
-            if is_new:
-                new_count += 1
-            else:
-                seen_count += 1
+                canonical, skill_items = build_items(job)
+                batch.put_item(Item=canonical)
+                for item in skill_items:
+                    batch.put_item(Item=item)
 
-            canonical, skill_items = build_items(job)
-            batch.put_item(Item=canonical)
-            for item in skill_items:
-                batch.put_item(Item=item)
-
-            if is_new:
-                increment_skill_counters(canonical["tags"])
+                if is_new:
+                    increment_skill_counters(canonical["tags"])
+                    new_count += 1
+                else:
+                    seen_count += 1
+            except Exception:
+                # Failure isolation: one bad posting is logged and skipped,
+                # the rest of the run continues.
+                failed_count += 1
+                logger.exception("Skipping job %s", job_id)
 
     result = {
         "jobs_fetched": len(jobs),
         "new_jobs": new_count,
         "already_seen": seen_count,
+        "failed": failed_count,
     }
     logger.info("Ingest complete: %s", json.dumps(result))
     return result

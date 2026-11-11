@@ -14,7 +14,7 @@ EventBridge (daily)
 Step Functions ---> Lambda: ingest ---> DynamoDB ---> Lambda: query ---> API Gateway
    (retry/catch)     (Remotive API)      (JobSignal)    summarize step        |
                             |                 ^                              v
-                            +---> Lambda: summarize (trending skills) ---> HTTP clients
+                            +---> Lambda: summarize (top-15 snapshot) ---> HTTP clients
 ```
 
 ![Step Functions execution graph showing IngestJobs and SummarizeSkills both succeeded, with the unused Catch branch to IngestFailed visible](assets/stepfunctions-execution.png)
@@ -31,14 +31,15 @@ without needing a failure to prove it._
   [Remotive API](https://remotive.com/api-documentation), normalizes and
   deduplicates them, and writes them to DynamoDB.
 - **Summarize Lambda** reads atomic per-skill counters (updated incrementally by
-  ingest on every new posting) via a single `Query`, and writes a daily
-  "trending skills" snapshot, with no table scan involved.
+  ingest on every new posting) via a single `Query`, and writes a daily top-15
+  snapshot of all-time skill counts, with no table scan involved.
 - **Query Lambda + API Gateway (HTTP API)** exposes two read-only endpoints over
   plain HTTP.
 - **DynamoDB** uses a single-table design with four item shapes sharing one table
   (see below).
-- **IAM**: every Lambda has its own execution role scoped to only what it needs:
-  ingest/summarize get read+write on the table, query gets read-only, and the
+- **IAM**: every Lambda has its own execution role scoped to the exact DynamoDB
+  actions it calls: ingest gets `GetItem`, `BatchWriteItem` and `UpdateItem`;
+  summarize gets `Query` and `PutItem`; query gets only `Query` (no `Scan`). The
   state machine can only invoke these two specific functions.
 
 ## DynamoDB schema

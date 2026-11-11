@@ -32,13 +32,12 @@ Resources:
         Variables:
           TABLE_NAME: !Ref JobSignalTable
       Policies:
-        # Least privilege: only the actions ingest actually calls
-        # (get_item for dedup, batch_writer puts, update_item for counters).
+        # Least privilege: get_item for dedup, BatchWriteItem (what batch_writer
+        # sends under the hood), update_item for counters.
         - Statement:
             - Effect: Allow
               Action:
                 - dynamodb:GetItem
-                - dynamodb:PutItem
                 - dynamodb:BatchWriteItem
                 - dynamodb:UpdateItem
               Resource: !GetAtt JobSignalTable.Arn
@@ -99,8 +98,12 @@ Resources:
         Variables:
           TABLE_NAME: !Ref JobSignalTable
       Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref JobSignalTable
+        # Read path only ever calls Query, so no Scan or GetItem.
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !GetAtt JobSignalTable.Arn
       Events:
         GetJobs:
           Type: HttpApi
