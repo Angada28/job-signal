@@ -38,7 +38,7 @@ without needing a failure to prove it._
 - **DynamoDB** uses a single-table design with four item shapes sharing one table
   (see below).
 - **IAM**: every Lambda has its own execution role scoped to the exact DynamoDB
-  actions it calls: ingest gets `GetItem`, `BatchWriteItem` and `UpdateItem`;
+  actions it calls: ingest gets `PutItem`, `BatchWriteItem` and `UpdateItem`;
   summarize gets `Query` and `PutItem`; query gets only `Query` (no `Scan`). The
   state machine can only invoke these two specific functions.
 

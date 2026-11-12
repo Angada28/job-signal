@@ -32,12 +32,13 @@ Resources:
         Variables:
           TABLE_NAME: !Ref JobSignalTable
       Policies:
-        # Least privilege: get_item for dedup, BatchWriteItem (what batch_writer
-        # sends under the hood), update_item for counters.
+        # Least privilege: BatchWriteItem for the SKILL# fan-out (batch_writer),
+        # PutItem + UpdateItem authorize the TransactWriteItems that writes META
+        # (conditional Put) and bumps counters (Update) atomically.
         - Statement:
             - Effect: Allow
               Action:
-                - dynamodb:GetItem
+                - dynamodb:PutItem
                 - dynamodb:BatchWriteItem
                 - dynamodb:UpdateItem
               Resource: !GetAtt JobSignalTable.Arn

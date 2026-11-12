@@ -31,14 +31,29 @@ propagating. Explicit state machine over implicit function chaining.
 
 **Least-privilege IAM per function.** Each Lambda has its own execution role,
 granting only the DynamoDB actions that function actually calls: ingest gets
-`GetItem`, `BatchWriteItem` and `UpdateItem`; summarize gets `Query` and
+`PutItem`, `BatchWriteItem` and `UpdateItem`; summarize gets `Query` and
 `PutItem`; query gets only `Query`; and the state machine's role can only invoke
 those two specific functions (`LambdaInvokePolicy`). I originally used SAM's
 `DynamoDBCrudPolicy` and `DynamoDBReadPolicy` templates, then audited them
 against the code and replaced them with inline policies, because they grant
 actions like `DeleteItem` and `Scan` that these functions never call. The audit
-caught a subtle one too: ingest's `batch.put_item(...)` looks like `PutItem`, but
-boto3's `batch_writer` actually sends `BatchWriteItem`, so `PutItem` wasn't needed.
+caught a subtle one too: boto3's `batch_writer` sends `BatchWriteItem`, not
+`PutItem`. Ingest's `TransactWriteItems` has no IAM action of its own; it's
+authorized by the `PutItem` and `UpdateItem` permissions for the actions inside it.
+
+**Idempotent ingest under retries.** Step Functions retries a failed ingest from
+the start, and my original code wasn't safe to re-run. It checked each job with
+`get_item`, queued the `JOB#<id>/META` item in `batch_writer` (which flushes
+later), and bumped the skill counters immediately. A crash after the counters
+were bumped but before the batch flushed meant the retry saw the job as new and
+counted its skills twice; the opposite crash left META written but the counters
+never bumped. The fix makes "mark as seen" and "bump counters" one atomic step:
+a single `TransactWriteItems` with a `Put` of META conditioned on
+`attribute_not_exists(PK)` plus one `ADD` per counter. Either everything commits
+or nothing does, and on a retry the condition fails for jobs already recorded,
+so they're counted as already seen. The tradeoff is cost: transactional writes
+consume twice the write capacity of normal writes, and a transaction caps out at
+100 actions, so jobs are limited to 99 tags.
 
 ## Problems I actually hit (and what they taught me)
 
