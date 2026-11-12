@@ -4,3 +4,8 @@ __pycache__/
 .env
 out.json
 env.json
+
+# Local API dumps (raw Remotive responses must never be committed)
+out.txt
+out*.txt
+*.dump.json
